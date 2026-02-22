@@ -1,0 +1,44 @@
+# Секреты — НИКОГДА не коммитить
+.env
+config.yaml
+
+# Telegram сессии — содержат полный доступ к аккаунту
+sessions/
+*.session
+
+# Данные и временные файлы
+data/
+temp/
+logs/
+cache/
+
+# Шрифты (скачиваются автоматически при setup)
+fonts/*.ttf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Node.js (Playwright — не нужен для Python-сервиса)
+node_modules/
+package-lock.json
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+package.json

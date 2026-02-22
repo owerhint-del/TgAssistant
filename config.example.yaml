@@ -1,0 +1,48 @@
+# ============================================================
+# TgAssistant — конфигурация в YAML (опционально)
+# Приоритет: CLI аргументы > .env > config.yaml > defaults
+#
+# Этот файл можно использовать ВМЕСТО или ВМЕСТЕ с .env.
+# ВНИМАНИЕ: если файл содержит api_hash или api_key —
+#   добавь config.yaml в .gitignore и не публикуй его.
+# ============================================================
+
+telegram:
+  api_id: 12345678
+  # api_hash лучше хранить в .env, а не здесь
+  phone: "+49123456789"
+  session_path: "./sessions/tgassistant"
+
+pipeline:
+  output_dir: "/Users/valeriiabeiko/Documents/ПП для питомцев/"
+  temp_dir: "./temp"
+  max_retries: 3
+  retry_backoff_sec: 30
+  concurrency: 1
+  log_level: INFO
+  max_duration_sec: 7200   # макс. длительность видео в секундах (2 часа)
+  max_file_mb: 2000        # макс. размер файла в МБ
+
+asr:
+  model_size: large-v3
+  device: cpu
+  compute_type: int8
+  beam_size: 5
+  vad_filter: true
+  language: ru
+  timestamps: true
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  max_tokens: 8192
+  summary_language: ru
+
+pdf:
+  font_path: "./fonts/DejaVuSans.ttf"
+  page_size: A4
+  split_mode: two_pdfs    # two_pdfs | single_pdf
+
+cleanup:
+  cleanup_temp: true
+  orphan_retention_hours: 24

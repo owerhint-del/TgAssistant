@@ -1,0 +1,7 @@
+telethon==1.42.0
+faster-whisper==1.1.1
+anthropic>=0.40.0
+fpdf2>=2.8.1
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+tqdm>=4.66.0
