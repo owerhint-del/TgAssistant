@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     msg_id          INTEGER NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending',
     -- pending | authenticating | downloading | transcribing
-    -- summarizing | exporting | done | error | cancelled
+    -- exporting | collecting | done | error | cancelled
+    job_type        TEXT NOT NULL DEFAULT 'media',
+    -- media | ingest
     retry_count     INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),

@@ -55,7 +55,8 @@ class MediaLimitExceededError(DownloadError):
 
 def _make_temp_path(temp_dir: str, link: TelegramLink, ext: str) -> str:
     Path(temp_dir).mkdir(parents=True, exist_ok=True)
-    return os.path.join(temp_dir, f"media_{link.chat_id}_{link.msg_id}{ext}")
+    channel_id = link.channel_username or str(link.chat_id)
+    return os.path.join(temp_dir, f"media_{channel_id}_{link.msg_id}{ext}")
 
 
 def _detect_media_info(message) -> Tuple[str, str, Optional[str], Optional[float]]:
@@ -115,17 +116,22 @@ class TelegramDownloader:
         Returns:
             (temp_path, asset_type, mime_type, duration_sec, file_size_bytes)
         """
-        # Получаем сущность канала
+        # Получаем сущность канала (по username или chat_id)
         try:
-            peer = await client.get_entity(PeerChannel(link.chat_id))
+            if link.channel_username:
+                peer = await client.get_entity(link.channel_username)
+            else:
+                peer = await client.get_entity(PeerChannel(link.chat_id))
         except (ChannelPrivateError, ChatAdminRequiredError):
+            channel_ref = link.channel_username or link.chat_id
             raise AccessDeniedError(
-                f"Нет доступа к каналу {link.chat_id}.\n"
+                f"Нет доступа к каналу {channel_ref}.\n"
                 "Убедись, что твой аккаунт состоит в этом канале."
             )
         except ValueError:
+            channel_ref = link.channel_username or link.chat_id
             raise AccessDeniedError(
-                f"Канал {link.chat_id} не найден. Проверь ссылку."
+                f"Канал {channel_ref} не найден. Проверь ссылку."
             )
 
         # Получаем сообщение

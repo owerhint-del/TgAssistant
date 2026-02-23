@@ -1,15 +1,18 @@
 """
 Worker: обрабатывает задачу с retry-логикой.
+Маршрутизация: классифицирует сообщение и направляет к нужному оркестратору.
 """
 import logging
 import time
-from typing import Optional
+from typing import Optional, Callable
 
 from telethon import TelegramClient
 
 from app.config import Config
 from app.db.database import Database
 from app.pipeline.orchestrator import Orchestrator, PipelineError
+from app.pipeline.ingest_orchestrator import IngestOrchestrator, IngestError
+from app.pipeline.classifier import classify, MessageType
 from app.pipeline.downloader import DownloadError, AccessDeniedError, MediaNotFoundError, UnsupportedMediaError, MediaLimitExceededError
 from app.utils.url_parser import TelegramLink
 
@@ -25,10 +28,40 @@ NON_RETRYABLE = (
 
 
 class Worker:
-    def __init__(self, cfg: Config, db: Database):
+    def __init__(self, cfg: Config, db: Database, progress_cb: Optional[Callable] = None):
         self.cfg = cfg
         self.db = db
-        self.orchestrator = Orchestrator(cfg, db)
+        self._progress_cb = progress_cb
+        self.orchestrator = Orchestrator(cfg, db, progress_cb=progress_cb)
+        self.ingest_orchestrator = IngestOrchestrator(cfg, db, progress_cb=progress_cb)
+
+    def _determine_job_type(self, job_id: str, link: TelegramLink, client: TelegramClient) -> str:
+        """
+        Определяет тип задачи: проверяет БД (resume), иначе классифицирует сообщение.
+        Записывает job_type в БД.
+        """
+        job = self.db.get_job_by_id(job_id)
+        existing_type = job.get("job_type") if job else None
+
+        # Если тип уже определён и это не дефолтный 'media' (resume)
+        if existing_type and existing_type != "media":
+            return existing_type
+
+        # Если тип 'media' — он мог быть выставлен по умолчанию, классифицируем
+        try:
+            msg_type = classify(client, link)
+        except ValueError as e:
+            raise MediaNotFoundError(str(e))
+
+        if msg_type == MessageType.AUDIO_VIDEO:
+            job_type = "media"
+        else:
+            job_type = "ingest"
+
+        # Обновляем тип в БД
+        self.db.update_job_status(job_id, job["status"], job_type=job_type)
+        logger.info("Тип задачи %s: %s (классификация: %s)", job_id, job_type, msg_type.value)
+        return job_type
 
     def process(
         self,
@@ -39,9 +72,10 @@ class Worker:
     ) -> Optional[dict]:
         """
         Обрабатывает задачу с retry при временных ошибках.
+        Маршрутизирует к Orchestrator (media) или IngestOrchestrator (ingest).
 
         Returns:
-            dict с путями к PDF или None при неустранимой ошибке.
+            dict с результатами или None при неустранимой ошибке.
         """
         max_attempts = self.cfg.max_retries
         backoff = self.cfg.retry_backoff_sec
@@ -52,16 +86,27 @@ class Worker:
                     "Запуск задачи %s (попытка %d/%d)",
                     job_id, attempt, max_attempts,
                 )
-                pdf_paths = self.orchestrator.run(
-                    job_id=job_id,
-                    link=link,
-                    client=client,
-                    from_start=from_start,
-                )
-                return pdf_paths
+
+                # Определяем тип задачи (media или ingest)
+                job_type = self._determine_job_type(job_id, link, client)
+
+                if job_type == "ingest":
+                    result = self.ingest_orchestrator.run(
+                        job_id=job_id,
+                        link=link,
+                        client=client,
+                        from_start=from_start,
+                    )
+                else:
+                    result = self.orchestrator.run(
+                        job_id=job_id,
+                        link=link,
+                        client=client,
+                        from_start=from_start,
+                    )
+                return result
 
             except NON_RETRYABLE as e:
-                # Ошибки без смысла повторять
                 error_msg = str(e)
                 logger.error("Неустранимая ошибка: %s", error_msg)
                 self.db.log_error(
@@ -75,7 +120,7 @@ class Worker:
                 )
                 return None
 
-            except PipelineError as e:
+            except (PipelineError, IngestError) as e:
                 error_msg = str(e)
                 self.db.increment_retry(job_id)
                 self.db.log_error(
@@ -104,7 +149,6 @@ class Worker:
                 time.sleep(wait)
 
             except Exception as e:
-                # Неожиданные ошибки
                 error_msg = str(e)
                 self.db.increment_retry(job_id)
                 self.db.log_error(

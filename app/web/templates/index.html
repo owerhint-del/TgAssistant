@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}TgAssistant — Jobs{% endblock %}
+{% block nav_home %}font-semibold text-gray-900{% endblock %}
+
+{% block content %}
+<div x-data="jobsApp()" x-init="init()">
+
+    <!-- Submit form -->
+    <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <h2 class="text-base font-semibold mb-3">Process Telegram Link</h2>
+        <form @submit.prevent="submitLink()" class="flex flex-col sm:flex-row gap-3">
+            <input
+                type="url"
+                x-model="newUrl"
+                placeholder="https://t.me/c/1234567890/123 or https://t.me/channel/123"
+                required
+                class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm
+                       focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none
+                       placeholder:text-gray-400 transition-colors"
+            >
+            <button
+                type="submit"
+                :disabled="submitting"
+                class="px-6 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg
+                       hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed
+                       transition-colors whitespace-nowrap"
+            >
+                <span x-show="!submitting">Process</span>
+                <span x-show="submitting" class="flex items-center gap-2">
+                    <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Submitting...
+                </span>
+            </button>
+        </form>
+        <p x-show="submitError" x-text="submitError" class="mt-2 text-sm text-red-600"></p>
+        <p x-show="submitSuccess" x-text="submitSuccess" class="mt-2 text-sm text-green-600"></p>
+    </div>
+
+    <!-- Job list -->
+    <div class="bg-white rounded-xl border border-gray-200">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+            <h2 class="text-base font-semibold">Jobs</h2>
+            <button @click="loadJobs()" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                Refresh
+            </button>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="jobs.length === 0 && !loading" class="px-5 py-12 text-center text-gray-400 text-sm">
+            No jobs yet. Paste a Telegram link above to get started.
+        </div>
+
+        <!-- Loading -->
+        <div x-show="loading" class="px-5 py-12 text-center text-gray-400 text-sm">
+            Loading...
+        </div>
+
+        <!-- Job items -->
+        <div x-show="jobs.length > 0">
+            <template x-for="job in jobs" :key="job.id">
+                <div class="px-5 py-4 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="min-w-0 flex-1">
+                            <!-- URL -->
+                            <p class="text-sm text-gray-700 font-mono truncate" x-text="job.url"></p>
+
+                            <!-- Meta row -->
+                            <div class="flex items-center gap-3 mt-1.5">
+                                <!-- Status badge -->
+                                <span
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                                    :class="statusClass(job.status)"
+                                >
+                                    <span x-show="isActive(job.status)" class="relative flex h-2 w-2">
+                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                                              :class="statusDotClass(job.status)"></span>
+                                        <span class="relative inline-flex rounded-full h-2 w-2"
+                                              :class="statusDotClass(job.status)"></span>
+                                    </span>
+                                    <span x-text="statusLabel(job.status)"></span>
+                                </span>
+
+                                <!-- Date -->
+                                <span class="text-xs text-gray-400" x-text="formatDate(job.created_at)"></span>
+
+                                <!-- Job ID -->
+                                <span class="text-xs text-gray-300 font-mono" x-text="job.id.substring(0, 8)"></span>
+                            </div>
+
+                            <!-- Error message -->
+                            <p x-show="job.status === 'error' && job.last_error"
+                               class="mt-1.5 text-xs text-red-500 truncate"
+                               x-text="job.last_error"></p>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="flex items-center gap-2 shrink-0">
+                            <!-- Download buttons (for done jobs with PDF exports) -->
+                            <template x-if="job.status === 'done' && job.exports && job.exports.some(e => e.export_type !== 'ingest_wiki')">
+                                <div class="flex gap-1.5">
+                                    <template x-for="exp in job.exports.filter(e => e.export_type !== 'ingest_wiki')" :key="exp.id">
+                                        <a :href="'/api/exports/' + exp.id + '/download'"
+                                           class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium
+                                                  bg-brand-50 text-brand-700 rounded-md hover:bg-brand-100 transition-colors"
+                                           :title="exp.export_type + ' PDF'">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                            </svg>
+                                            <span x-text="exp.export_type"></span>
+                                        </a>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <!-- Wiki folder badge (for done ingest jobs) -->
+                            <template x-if="job.status === 'done' && job.exports && job.exports.some(e => e.export_type === 'ingest_wiki')">
+                                <div class="flex gap-1.5">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium
+                                                 bg-emerald-50 text-emerald-700 rounded-md"
+                                          :title="job.exports.find(e => e.export_type === 'ingest_wiki')?.file_path">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                                        </svg>
+                                        wiki
+                                    </span>
+                                </div>
+                            </template>
+
+                            <!-- Retry button (for error jobs) -->
+                            <button x-show="job.status === 'error'"
+                                    @click="retryJob(job.id)"
+                                    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium
+                                           bg-orange-50 text-orange-700 rounded-md hover:bg-orange-100 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                Retry
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function jobsApp() {
+    return {
+        jobs: [],
+        loading: true,
+        newUrl: '',
+        submitting: false,
+        submitError: '',
+        submitSuccess: '',
+
+        async init() {
+            await this.loadJobs();
+            this.connectSSE();
+        },
+
+        async loadJobs() {
+            this.loading = true;
+            try {
+                const resp = await fetch('/api/jobs');
+                const data = await resp.json();
+                this.jobs = data.jobs || [];
+            } catch (e) {
+                console.error('Failed to load jobs:', e);
+            }
+            this.loading = false;
+        },
+
+        async submitLink() {
+            this.submitting = true;
+            this.submitError = '';
+            this.submitSuccess = '';
+            try {
+                const resp = await fetch('/api/jobs', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: this.newUrl}),
+                });
+                const data = await resp.json();
+                if (data.error) {
+                    this.submitError = data.error;
+                } else {
+                    this.submitSuccess = data.message || 'Job submitted!';
+                    this.newUrl = '';
+                    await this.loadJobs();
+                    // Clear success message after 3s
+                    setTimeout(() => this.submitSuccess = '', 3000);
+                }
+            } catch (e) {
+                this.submitError = 'Network error. Is the server running?';
+            }
+            this.submitting = false;
+        },
+
+        async retryJob(jobId) {
+            try {
+                const resp = await fetch(`/api/jobs/${jobId}/retry`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({}),
+                });
+                await this.loadJobs();
+            } catch (e) {
+                console.error('Retry failed:', e);
+            }
+        },
+
+        connectSSE() {
+            const indicator = document.getElementById('sse-indicator');
+            const es = new EventSource('/api/events');
+
+            es.onopen = () => {
+                indicator.className = 'w-2 h-2 rounded-full bg-green-500';
+                indicator.title = 'Connected';
+            };
+
+            es.addEventListener('job_update', (e) => {
+                const event = JSON.parse(e.data);
+                this.handleJobUpdate(event);
+            });
+
+            es.onerror = () => {
+                indicator.className = 'w-2 h-2 rounded-full bg-red-500';
+                indicator.title = 'Disconnected';
+            };
+        },
+
+        handleJobUpdate(event) {
+            // Find and update the job in the list
+            const idx = this.jobs.findIndex(j => j.id === event.job_id);
+            if (idx >= 0) {
+                this.jobs[idx].status = event.status;
+                if (event.error) {
+                    this.jobs[idx].last_error = event.error;
+                }
+                // Reload full data if done (to get exports)
+                if (event.status === 'done' || event.status === 'error') {
+                    this.loadJobs();
+                }
+            } else {
+                // New job — reload the list
+                this.loadJobs();
+            }
+        },
+
+        // UI helpers
+        statusClass(status) {
+            const map = {
+                'pending':       'bg-gray-100 text-gray-600',
+                'downloading':   'bg-blue-100 text-blue-700',
+                'transcribing':  'bg-indigo-100 text-indigo-700',
+                'exporting':     'bg-cyan-100 text-cyan-700',
+                'collecting':    'bg-emerald-100 text-emerald-700',
+                'done':          'bg-green-100 text-green-700',
+                'error':         'bg-red-100 text-red-700',
+                'cancelled':     'bg-gray-100 text-gray-500',
+            };
+            return map[status] || 'bg-gray-100 text-gray-600';
+        },
+
+        statusDotClass(status) {
+            const map = {
+                'downloading':  'bg-blue-500',
+                'transcribing': 'bg-indigo-500',
+                'exporting':    'bg-cyan-500',
+                'collecting':   'bg-emerald-500',
+            };
+            return map[status] || 'bg-gray-500';
+        },
+
+        statusLabel(status) {
+            const map = {
+                'pending':      'Pending',
+                'downloading':  'Downloading',
+                'transcribing': 'Transcribing',
+                'exporting':    'Exporting',
+                'collecting':   'Collecting',
+                'done':         'Done',
+                'error':        'Error',
+                'cancelled':    'Cancelled',
+            };
+            return map[status] || status;
+        },
+
+        isActive(status) {
+            return ['downloading', 'transcribing', 'exporting', 'collecting'].includes(status);
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'Z');
+            return d.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})
+                   + ' ' + d.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
+        },
+    };
+}
+</script>
+{% endblock %}

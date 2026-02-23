@@ -24,6 +24,7 @@ except ImportError:
 @dataclass
 class Config:
     # ─── Telegram ────────────────────────────────────────────
+    # Get your own credentials at https://my.telegram.org
     tg_api_id: int = 0
     tg_api_hash: str = ""
     tg_phone: str = ""
@@ -177,26 +178,27 @@ def validate_config(cfg: Config, require_tg: bool = True) -> list:
     if require_tg:
         if not cfg.tg_api_id:
             errors.append(
-                "TG_API_ID не задан. Получи на https://my.telegram.org → API development tools"
+                "TG_API_ID not set. Get yours at https://my.telegram.org"
             )
         if not cfg.tg_api_hash:
             errors.append(
-                "TG_API_HASH не задан. Получи на https://my.telegram.org → API development tools"
+                "TG_API_HASH not set. Get yours at https://my.telegram.org"
             )
         if not cfg.tg_phone:
             errors.append(
-                "TG_PHONE не задан. Пример: TG_PHONE=+49123456789"
+                "TG_PHONE not set. Example: TG_PHONE=+49123456789"
             )
 
-    if not cfg.anthropic_api_key:
-        errors.append(
-            "ANTHROPIC_API_KEY не задан. Получи на https://console.anthropic.com/keys"
-        )
+    # ANTHROPIC_API_KEY is optional — only needed if summary features are re-enabled
+    # if not cfg.anthropic_api_key:
+    #     errors.append(
+    #         "ANTHROPIC_API_KEY not set. Get yours at https://console.anthropic.com/keys"
+    #     )
 
     if not Path(cfg.pdf_font_path).exists():
         errors.append(
-            f"Шрифт не найден: {cfg.pdf_font_path}\n"
-            "  Запусти: python run.py --setup  (шрифт скачается автоматически)"
+            f"Font not found: {cfg.pdf_font_path}\n"
+            "  Run: python run.py --setup  (font will be downloaded automatically)"
         )
 
     return errors

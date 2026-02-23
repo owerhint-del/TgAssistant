@@ -1,60 +1,64 @@
-# SECURITY — Политика безопасности TgAssistant
+# Security Policy
 
-## Что является секретом
+## Sensitive Data
 
-| Файл/переменная | Что содержит | Где хранится |
+| File / Variable | Contents | Storage |
 |---|---|---|
-| `TG_API_ID` / `TG_API_HASH` | Ключи доступа к Telegram API | `.env` |
-| `TG_PHONE` | Номер телефона аккаунта | `.env` |
-| `ANTHROPIC_API_KEY` | Ключ API Claude | `.env` |
-| `sessions/*.session` | Авторизованная сессия Telegram | `sessions/` |
+| `TG_API_ID` / `TG_API_HASH` | Telegram API credentials | `.env` |
+| `TG_PHONE` | Phone number linked to Telegram | `.env` |
+| `ANTHROPIC_API_KEY` | Claude API key | `.env` |
+| `sessions/*.session` | Authorized Telegram session | `sessions/` |
 
-## Правила
+## Rules
 
-### Никогда не публиковать в git:
+### Never commit to git:
 ```
 .env
-config.yaml  (если содержит секреты)
+config.yaml  (if it contains secrets)
 sessions/
 *.session
 ```
 
-Файл `.gitignore` уже содержит эти исключения — **не удаляй их**.
+The `.gitignore` already excludes these — **do not remove those entries**.
 
-### Права доступа к файлам (устанавливаются автоматически при `--setup`):
+### File permissions (set automatically by `--setup`):
 ```bash
-chmod 600 .env               # только ты
-chmod 700 sessions/          # только ты
-chmod 600 sessions/*.session # только ты
+chmod 600 .env               # owner-only
+chmod 700 sessions/          # owner-only
+chmod 600 sessions/*.session # owner-only
 ```
 
-### Маскирование в логах:
-Все логи автоматически скрывают:
+### Log masking:
+All logs automatically redact:
 - `api_hash` → `api_hash=***`
 - `ANTHROPIC_API_KEY` → `sk-ant-***`
-- Номер телефона → `+49***789`
+- Phone number → `+49***789`
 - Session string → `[SESSION_REDACTED]`
 
-## Если сессия скомпрометирована
+## If a session is compromised
 
-1. Открой Telegram → Настройки → Устройства
-2. Найди сессию "TgAssistant" и завершй её
-3. Удали файл: `rm sessions/tgassistant.session`
-4. Запусти заново: `python run.py --setup`
+1. Open Telegram → Settings → Devices
+2. Find the "TgAssistant" session and terminate it
+3. Delete the file: `rm sessions/tgassistant.session`
+4. Re-run: `python run.py --setup`
 
-## Если утёк ANTHROPIC_API_KEY
+## If ANTHROPIC_API_KEY is leaked
 
-1. Открой https://console.anthropic.com/keys
-2. Нажми "Revoke" рядом с ключом
-3. Создай новый ключ
-4. Обнови `.env`: `ANTHROPIC_API_KEY=новый_ключ`
+1. Go to https://console.anthropic.com/keys
+2. Click "Revoke" next to the key
+3. Create a new key
+4. Update `.env`: `ANTHROPIC_API_KEY=new_key`
 
-## Если утёк TG_API_HASH
+## If TG_API_HASH is leaked
 
-1. Открой https://my.telegram.org → API development tools
-2. Пересоздай приложение или смени hash
-3. Обнови `.env`
+1. Go to https://my.telegram.org → API development tools
+2. Recreate the application or change the hash
+3. Update `.env`
 
-## Отчёт об уязвимости
+## Reporting a Vulnerability
 
-Если ты нашла уязвимость в коде — создай приватный issue или напиши напрямую.
+If you find a security vulnerability, please report it responsibly:
+- Open a **private security advisory** on GitHub (Security tab → Report a vulnerability)
+- Or email: [INSERT CONTACT EMAIL]
+
+Please do not open public issues for security vulnerabilities.

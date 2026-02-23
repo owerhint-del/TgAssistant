@@ -133,78 +133,71 @@ def run_setup():
         """)
         sys.exit(1)
 
-    # ── Шаг 2: Telegram API ────────────────────────────────────
-    _print_step(2, TOTAL_STEPS, "Telegram API ключи")
+    # ── Шаг 2: Telegram API credentials ─────────────────────────
+    _print_step(2, TOTAL_STEPS, "Telegram API credentials")
 
     print("""
-  Для работы нужны api_id и api_hash твоего приложения Telegram.
-  Получить их бесплатно (занимает 2 минуты):
+  You need Telegram API credentials to connect.
+  Get them at: https://my.telegram.org → API development tools
 
-  1. Открой в браузере: https://my.telegram.org
-  2. Войди своим номером телефона (тем же, что используешь в Telegram)
-  3. Нажми: "API development tools"
-  4. Заполни форму (название приложения — любое, например "MyApp")
-  5. Нажми "Create application"
-  6. Скопируй App api_id (число) и App api_hash (длинная строка)
+  1. Log in with your phone number
+  2. Go to "API development tools"
+  3. Create a new application (any name)
+  4. Copy api_id and api_hash
 """)
 
     env_data = {}
-    current_env_api_id = os.getenv("TG_API_ID", "")
-    current_env_api_hash = os.getenv("TG_API_HASH", "")
-    current_env_phone = os.getenv("TG_PHONE", "")
 
+    current_api_id = os.getenv("TG_API_ID", "")
     api_id_input = input(
-        f"  App api_id [{current_env_api_id or 'введи число'}]: "
+        f"  TG_API_ID [{current_api_id or 'from my.telegram.org'}]: "
     ).strip()
-    api_id = api_id_input or current_env_api_id
+    api_id = api_id_input or current_api_id
     if not api_id:
-        print("  ✗ api_id обязателен.")
-        sys.exit(1)
-    try:
-        int(api_id)
-    except ValueError:
-        print("  ✗ api_id должен быть числом.")
+        print("  ✗ TG_API_ID is required.")
         sys.exit(1)
     env_data["TG_API_ID"] = api_id
 
+    current_api_hash = os.getenv("TG_API_HASH", "")
     api_hash_input = input(
-        f"  App api_hash [{'***' if current_env_api_hash else 'введи строку'}]: "
+        f"  TG_API_HASH [{('***' + current_api_hash[-4:]) if current_api_hash else 'from my.telegram.org'}]: "
     ).strip()
-    api_hash = api_hash_input or current_env_api_hash
+    api_hash = api_hash_input or current_api_hash
     if not api_hash:
-        print("  ✗ api_hash обязателен.")
+        print("  ✗ TG_API_HASH is required.")
         sys.exit(1)
     env_data["TG_API_HASH"] = api_hash
 
+    current_env_phone = os.getenv("TG_PHONE", "")
     phone_input = input(
-        f"  Номер телефона [{current_env_phone or 'например +49123456789'}]: "
+        f"  Phone number [{current_env_phone or 'e.g. +49123456789'}]: "
     ).strip()
     phone = phone_input or current_env_phone
     if not phone:
-        print("  ✗ Номер телефона обязателен.")
+        print("  ✗ Phone number is required.")
         sys.exit(1)
     env_data["TG_PHONE"] = phone
 
-    # ── Шаг 3: Anthropic API ──────────────────────────────────
-    _print_step(3, TOTAL_STEPS, "Anthropic API ключ")
+    # ── Шаг 3: Anthropic API (optional) ─────────────────────
+    _print_step(3, TOTAL_STEPS, "Anthropic API ключ (необязательно)")
 
     print("""
-  Ключ нужен для генерации конспекта через Claude.
-  Получить:
-  1. Открой: https://console.anthropic.com/keys
-  2. Нажми "Create key"
-  3. Скопируй ключ (начинается с sk-ant-)
+  Ключ нужен только если в будущем понадобится AI-summary.
+  Для базовой транскрипции он НЕ нужен.
+  Получить: https://console.anthropic.com/keys
+  Нажми Enter чтобы пропустить.
 """)
 
     current_key = os.getenv("ANTHROPIC_API_KEY", "")
     key_input = input(
-        f"  ANTHROPIC_API_KEY [{'sk-ant-***' if current_key else 'введи ключ'}]: "
+        f"  ANTHROPIC_API_KEY [{'sk-ant-***' if current_key else 'пропустить'}]: "
     ).strip()
     anthropic_key = key_input or current_key
-    if not anthropic_key:
-        print("  ✗ API ключ обязателен.")
-        sys.exit(1)
-    env_data["ANTHROPIC_API_KEY"] = anthropic_key
+    if anthropic_key:
+        env_data["ANTHROPIC_API_KEY"] = anthropic_key
+        print("  ✓ Ключ сохранён.")
+    else:
+        print("  → Пропущено (не нужен для транскрипции).")
 
     # ── Шаг 4: Папка для PDF ──────────────────────────────────
     _print_step(4, TOTAL_STEPS, "Папка для сохранения PDF")
@@ -270,7 +263,7 @@ def run_setup():
 
     except Exception as e:
         print(f"\n  ✗ Ошибка авторизации: {e}")
-        print("  Проверь api_id, api_hash и номер телефона, затем запусти --setup снова.")
+        print("  Проверь номер телефона и попробуй запустить --setup снова.")
         sys.exit(1)
 
     # ── Финал ─────────────────────────────────────────────────

@@ -14,7 +14,7 @@ telegram:
   session_path: "./sessions/tgassistant"
 
 pipeline:
-  output_dir: "/Users/valeriiabeiko/Documents/ПП для питомцев/"
+  output_dir: "~/Documents/TgAssistant_output"
   temp_dir: "./temp"
   max_retries: 3
   retry_backoff_sec: 30

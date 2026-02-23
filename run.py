@@ -29,7 +29,7 @@ def _bootstrap():
 def _make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python run.py",
-        description="TgAssistant — транскрипция и конспект Telegram-материалов",
+        description="TgAssistant — транскрипция Telegram-материалов",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -37,7 +37,7 @@ def _make_parser() -> argparse.ArgumentParser:
     group.add_argument(
         "--setup",
         action="store_true",
-        help="Первоначальная настройка (api_id, api_hash, авторизация)",
+        help="Первоначальная настройка (телефон, ключи, авторизация)",
     )
     group.add_argument(
         "--check-config",
@@ -48,7 +48,7 @@ def _make_parser() -> argparse.ArgumentParser:
         "--link",
         nargs="+",
         metavar="URL",
-        help="Ссылка(и) для обработки (https://t.me/c/<chat_id>/<msg_id>)",
+        help="Ссылка(и) для обработки (https://t.me/c/<chat_id>/<msg_id> или https://t.me/<channel>/<msg_id>)",
     )
     group.add_argument(
         "--watch",
@@ -65,10 +65,17 @@ def _make_parser() -> argparse.ArgumentParser:
         metavar="JOB_ID",
         help="Повторить задачу с последнего успешного шага",
     )
+    group.add_argument(
+        "--web",
+        action="store_true",
+        help="Запустить веб-интерфейс (localhost:8000)",
+    )
 
     # Общие флаги
     parser.add_argument("--config", metavar="PATH", help="Путь к config.yaml")
     parser.add_argument("--output-dir", metavar="DIR", help="Папка для PDF")
+    parser.add_argument("--host", default="127.0.0.1", help="Адрес для --web (по умолчанию 127.0.0.1, для LAN: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8000, help="Порт для --web (по умолчанию 8000)")
     parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -146,8 +153,8 @@ def cmd_check_config(args):
     session_file = Path(cfg.tg_session_path + ".session")
     checks.append(("Session файл",  session_file.exists(),     str(session_file)))
 
-    # Anthropic
-    checks.append(("ANTHROPIC_KEY", bool(cfg.anthropic_api_key), "sk-ant-***" if cfg.anthropic_api_key else "не задан"))
+    # Anthropic (optional — not needed for verbatim transcription)
+    checks.append(("ANTHROPIC_KEY", True, "sk-ant-***" if cfg.anthropic_api_key else "(optional)"))
 
     # ffmpeg
     import subprocess
@@ -208,7 +215,7 @@ def cmd_process_link(url: str, cfg, db, from_start: bool = False):
             for exp in exports:
                 print(f"  → {exp['file_path']}")
             return True
-        elif status in ("downloading", "transcribing", "summarizing", "exporting"):
+        elif status in ("downloading", "transcribing", "exporting", "collecting"):
             print(f"\n  Задача уже выполняется (статус: {status}).")
             return False
         elif status == "error":
@@ -231,19 +238,25 @@ def cmd_process_link(url: str, cfg, db, from_start: bool = False):
         return False
 
     # Обработка
-    from app.utils.async_utils import run_sync, close_loop
+    from app.utils.async_utils import run_sync, safe_disconnect, close_loop
     worker = Worker(cfg, db)
     try:
         run_sync(client.connect())
         pdf_paths = worker.process(job_id, link, client, from_start=from_start)
     finally:
-        run_sync(client.disconnect())
+        safe_disconnect(client)
         close_loop()
 
     if pdf_paths:
-        print(f"\n  ✓ Готово! PDF сохранены:")
-        print(f"  → {pdf_paths.get('transcript')}")
-        print(f"  → {pdf_paths.get('summary')}")
+        if "wiki_dir" in pdf_paths:
+            # Ingest результат
+            print(f"\n  ✓ Готово! Сообщение сохранено:")
+            print(f"  → {pdf_paths['wiki_dir']}")
+        else:
+            # Media результат (PDF)
+            print(f"\n  ✓ Готово! PDF сохранены:")
+            for label, path in pdf_paths.items():
+                print(f"  → {path}")
         return True
     else:
         job = db.get_job_by_id(job_id)
@@ -270,7 +283,8 @@ def cmd_status(db, status_filter=None):
         if job["status"] == "done":
             exports = db.get_exports(job["id"])
             for exp in exports:
-                print(f"           {'':14} {'':20} → {exp['file_path']}")
+                prefix = "wiki" if exp["export_type"] == "ingest_wiki" else "pdf"
+                print(f"           {'':14} {'':20} → [{prefix}] {exp['file_path']}")
         elif job["status"] == "error":
             err = (job.get("last_error") or "")[:60]
             print(f"           {'':14} {'':20} ✗ {err}")
@@ -308,19 +322,22 @@ def cmd_retry(job_id: str, cfg, db, from_start: bool):
         print(f"\n  ✗ {e}")
         return
 
-    from app.utils.async_utils import run_sync, close_loop
+    from app.utils.async_utils import run_sync, safe_disconnect, close_loop
     worker = Worker(cfg, db)
     try:
         run_sync(client.connect())
         pdf_paths = worker.process(job["id"], link, client, from_start=from_start)
     finally:
-        run_sync(client.disconnect())
+        safe_disconnect(client)
         close_loop()
 
     if pdf_paths:
         print(f"\n  ✓ Повторная обработка успешна!")
-        print(f"  → {pdf_paths.get('transcript')}")
-        print(f"  → {pdf_paths.get('summary')}")
+        if "wiki_dir" in pdf_paths:
+            print(f"  → {pdf_paths['wiki_dir']}")
+        else:
+            for label, path in pdf_paths.items():
+                print(f"  → {path}")
     else:
         print(f"\n  ✗ Повторная обработка не удалась. Смотри: logs/tgassistant.log")
 
@@ -347,6 +364,12 @@ def main():
         print(f"\n  ✗ Ошибка загрузки конфигурации: {e}")
         print("  Запусти: python run.py --setup")
         sys.exit(1)
+
+    if args.web:
+        from app.web.server import start_server
+        start_server(cfg, db, host=args.host, port=args.port)
+        db.close()
+        return
 
     if args.link:
         for url in args.link:

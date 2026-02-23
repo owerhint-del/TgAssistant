@@ -32,9 +32,31 @@ class TestParseUrl:
         assert link.chat_id == 1775135187
         assert link.msg_id == 1197
 
-    def test_invalid_link_public_channel(self):
-        with pytest.raises(ValueError, match="Неверный формат"):
-            parse_url("https://t.me/somechannel/42")
+    def test_public_channel_link(self):
+        link = parse_url("https://t.me/somechannel/42")
+        assert link.chat_id == 0
+        assert link.msg_id == 42
+        assert link.channel_username == "somechannel"
+
+    def test_public_channel_preserves_raw_url(self):
+        url = "https://t.me/durov/123"
+        link = parse_url(url)
+        assert link.raw_url == url
+        assert link.channel_username == "durov"
+        assert link.msg_id == 123
+
+    def test_public_channel_with_query(self):
+        link = parse_url("https://t.me/mychannel/99?single")
+        assert link.channel_username == "mychannel"
+        assert link.msg_id == 99
+
+    def test_reserved_path_rejected(self):
+        with pytest.raises(ValueError, match="зарезервированный путь"):
+            parse_url("https://t.me/joinchat/42")
+
+    def test_private_link_has_no_username(self):
+        link = parse_url("https://t.me/c/1234567890/42")
+        assert link.channel_username is None
 
     def test_invalid_link_empty(self):
         with pytest.raises(ValueError):

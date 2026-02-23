@@ -1,0 +1,27 @@
+/* TgAssistant Web UI — minimal custom styles */
+
+/* Smooth transitions for Alpine.js show/hide */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Subtle animation for status badges */
+@keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}

@@ -107,6 +107,7 @@ class TgPDF(FPDF):
 
     def write_body(self, text: str):
         self.set_font("DejaVu", size=BODY_SIZE)
+        self.set_x(MARGIN)
         self.multi_cell(0, LINE_HEIGHT, text)
         self.ln(1)
 
@@ -129,8 +130,20 @@ class TgPDF(FPDF):
         col2_w = self.w - 2 * MARGIN - col1_w
         font_style = "B" if (is_header and self._has_bold) else ""
         self.set_font("DejaVu", style=font_style, size=BODY_SIZE)
-        self.cell(col1_w, LINE_HEIGHT + 1, col1, border=1)
-        self.multi_cell(col2_w, LINE_HEIGHT + 1, col2, border=1)
+        self.cell(col1_w, LINE_HEIGHT + 1, _break_long_words(col1, 25), border=1)
+        self.multi_cell(col2_w, LINE_HEIGHT + 1, _break_long_words(col2, 40), border=1)
+
+
+def _break_long_words(text: str, max_len: int = 50) -> str:
+    """Break words longer than max_len by inserting spaces."""
+    words = text.split(" ")
+    result = []
+    for word in words:
+        while len(word) > max_len:
+            result.append(word[:max_len])
+            word = word[max_len:]
+        result.append(word)
+    return " ".join(result)
 
 
 def _render_markdown(pdf: TgPDF, text: str) -> None:
@@ -204,7 +217,8 @@ def _render_markdown(pdf: TgPDF, text: str) -> None:
         if stripped.startswith("- ") or stripped.startswith("• "):
             content = stripped[2:].lstrip()
             pdf.set_font("DejaVu", size=BODY_SIZE)
-            pdf.multi_cell(0, LINE_HEIGHT, f"  • {content}")
+            pdf.set_x(MARGIN)
+            pdf.multi_cell(0, LINE_HEIGHT, f"  • {_break_long_words(content)}")
             i += 1
             continue
 
@@ -214,7 +228,8 @@ def _render_markdown(pdf: TgPDF, text: str) -> None:
             num = num_match.group(1)
             content = num_match.group(2)
             pdf.set_font("DejaVu", size=BODY_SIZE)
-            pdf.multi_cell(0, LINE_HEIGHT, f"  {num}. {content}")
+            pdf.set_x(MARGIN)
+            pdf.multi_cell(0, LINE_HEIGHT, f"  {num}. {_break_long_words(content)}")
             i += 1
             continue
 
@@ -222,7 +237,7 @@ def _render_markdown(pdf: TgPDF, text: str) -> None:
         # Убираем **bold** разметку (просто убираем звёздочки, fpdf2 не поддерживает inline bold без RTL)
         clean = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
         clean = re.sub(r"\*(.*?)\*", r"\1", clean)
-        pdf.write_body(clean)
+        pdf.write_body(_break_long_words(clean))
         i += 1
 
 

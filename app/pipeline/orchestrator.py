@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from telethon import TelegramClient
 
@@ -14,7 +14,6 @@ from app.config import Config
 from app.db.database import Database
 from app.pipeline.downloader import TelegramDownloader
 from app.pipeline.transcriber import Transcriber
-from app.pipeline.summarizer import Summarizer
 from app.pipeline.pdf_exporter import PDFExporter
 from app.utils.url_parser import TelegramLink
 from app.utils.cleanup import cleanup_after_success, cleanup_wav
@@ -35,13 +34,13 @@ class PipelineError(Exception):
 
 
 class Orchestrator:
-    def __init__(self, cfg: Config, db: Database):
+    def __init__(self, cfg: Config, db: Database, progress_cb: Optional[Callable] = None):
         self.cfg = cfg
         self.db = db
         self.downloader = TelegramDownloader(cfg)
         self.transcriber = Transcriber(cfg)
-        self.summarizer = Summarizer(cfg)
         self.exporter = PDFExporter(cfg)
+        self._progress_cb = progress_cb
 
     def run(
         self,
@@ -62,6 +61,13 @@ class Orchestrator:
         Returns:
             dict с путями к PDF
         """
+        def _notify(status: str, **extra):
+            if self._progress_cb:
+                try:
+                    self._progress_cb(job_id, status, **extra)
+                except Exception:
+                    pass  # SSE notification is best-effort
+
         if from_start:
             logger.info("Запуск с нуля (--from-start).")
 
@@ -74,7 +80,8 @@ class Orchestrator:
                 not Path(asset.get("temp_path", "")).exists():
 
             self.db.update_job_status(job_id, "downloading")
-            logger.info("Шаг 1/4: Скачиваю медиафайл...")
+            _notify("downloading")
+            logger.info("Шаг 1/3: Скачиваю медиафайл...")
 
             try:
                 result = run_sync(self.downloader.download(client, link))
@@ -93,17 +100,18 @@ class Orchestrator:
                 file_size_bytes=file_size,
                 duration_sec=duration_sec,
             )
-            logger.info("✓ Шаг 1/4: Скачано → %s", media_path)
+            logger.info("✓ Шаг 1/3: Скачано → %s", media_path)
         else:
             media_path = asset["temp_path"]
-            logger.info("Шаг 1/4: используем кэшированный файл → %s", media_path)
+            logger.info("Шаг 1/3: используем кэшированный файл → %s", media_path)
 
         # ── Шаг B: TRANSCRIBE ────────────────────────────────
         transcript_record = None if from_start else self.db.get_transcript(job_id)
 
         if not transcript_record:
             self.db.update_job_status(job_id, "transcribing")
-            logger.info("Шаг 2/4: Транскрибирую...")
+            _notify("transcribing")
+            logger.info("Шаг 2/3: Транскрибирую...")
 
             try:
                 transcript = self.transcriber.transcribe(media_path, job_id)
@@ -124,7 +132,7 @@ class Orchestrator:
             cleanup_after_success(media_path)
             self.db.mark_asset_deleted(job_id)
             logger.info(
-                "✓ Шаг 2/4: Транскрибировано (%d слов, язык: %s)",
+                "✓ Шаг 2/3: Транскрибировано (%d слов, язык: %s)",
                 transcript.word_count, transcript.language,
             )
         else:
@@ -150,42 +158,15 @@ class Orchestrator:
                 word_count=transcript_record.get("word_count", 0),
                 unrecognized_count=transcript_record.get("unrecognized_count", 0),
             )
-            logger.info("Шаг 2/4: используем кэшированный транскрипт из БД.")
+            logger.info("Шаг 2/3: используем кэшированный транскрипт из БД.")
 
-        # ── Шаг C: SUMMARIZE ─────────────────────────────────
-        summary_record = None if from_start else self.db.get_summary(job_id)
-
-        if not summary_record:
-            self.db.update_job_status(job_id, "summarizing")
-            logger.info("Шаг 3/4: Генерирую конспект через Claude...")
-
-            try:
-                summary_text, pt, ct, chunks = self.summarizer.summarize(transcript)
-            except Exception as e:
-                raise PipelineError(str(e), step="summarize")
-
-            self.db.save_summary(
-                job_id=job_id,
-                content=summary_text,
-                model_used=self.cfg.llm_model,
-                prompt_tokens=pt,
-                completion_tokens=ct,
-                chunks_count=chunks,
-                summary_language=self.cfg.summary_language,
-            )
-            logger.info(
-                "✓ Шаг 3/4: Конспект готов (токены: вход=%d, выход=%d)", pt, ct
-            )
-        else:
-            summary_text = summary_record["content"]
-            logger.info("Шаг 3/4: используем кэшированный конспект из БД.")
-
-        # ── Шаг D: EXPORT PDF ────────────────────────────────
+        # ── Шаг C: EXPORT PDF ────────────────────────────────
         exports = [] if from_start else self.db.get_exports(job_id)
         existing_types = {e["export_type"] for e in exports}
 
         self.db.update_job_status(job_id, "exporting")
-        logger.info("Шаг 4/4: Создаю PDF...")
+        _notify("exporting")
+        logger.info("Шаг 3/3: Создаю PDF...")
 
         pdf_paths = {}
 
@@ -201,21 +182,7 @@ class Orchestrator:
             existing = next(e for e in exports if e["export_type"] == "transcript")
             pdf_paths["transcript"] = existing["file_path"]
 
-        if "summary" not in existing_types:
-            try:
-                s_path = self.exporter.export_summary(
-                    summary_text, link, model_used=self.cfg.llm_model
-                )
-            except Exception as e:
-                raise PipelineError(str(e), step="export_summary")
-            s_size = Path(s_path).stat().st_size
-            self.db.save_export(job_id, "summary", s_path, s_size)
-            pdf_paths["summary"] = s_path
-        else:
-            existing = next(e for e in exports if e["export_type"] == "summary")
-            pdf_paths["summary"] = existing["file_path"]
-
-        logger.info("✓ Шаг 4/4: PDF созданы.")
+        logger.info("✓ Шаг 3/3: PDF создан.")
 
         # ── DONE ─────────────────────────────────────────────
         self.db.update_job_status(job_id, "done")
