@@ -14,8 +14,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def cfg(tmp_path):
     from app.config import Config
     return Config(
-        tg_api_id=12345678,
-        tg_api_hash="testhash",
         tg_phone="+49000000000",
         tg_session_path=str(tmp_path / "session"),
         output_dir=str(tmp_path / "output"),
@@ -177,6 +175,40 @@ class TestTranscriptResult:
             word_count=3,
         )
         assert result.word_count == 3
+
+
+class TestValidateConfig:
+
+    def test_phone_only_passes(self, tmp_path):
+        from app.config import Config, validate_config
+        cfg = Config(
+            tg_phone="+49000000000",
+            pdf_font_path="./fonts/DejaVuSans.ttf",
+        )
+        # Create font so font check passes
+        font = Path("./fonts/DejaVuSans.ttf")
+        errors = validate_config(cfg)
+        phone_errors = [e for e in errors if "TG_PHONE" in e]
+        assert len(phone_errors) == 0
+
+    def test_no_phone_fails(self, tmp_path):
+        from app.config import Config, validate_config
+        cfg = Config(pdf_font_path="./fonts/DejaVuSans.ttf")
+        errors = validate_config(cfg)
+        assert any("TG_PHONE" in e for e in errors)
+
+    def test_no_api_id_check(self, tmp_path):
+        """validate_config should NOT check tg_api_id anymore."""
+        from app.config import Config, validate_config
+        cfg = Config(
+            tg_phone="+49000000000",
+            tg_api_id=0,
+            tg_api_hash="",
+            pdf_font_path="./fonts/DejaVuSans.ttf",
+        )
+        errors = validate_config(cfg)
+        assert not any("TG_API_ID" in e for e in errors)
+        assert not any("TG_API_HASH" in e for e in errors)
 
 
 class TestUrlParserIntegration:

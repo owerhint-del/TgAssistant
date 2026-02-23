@@ -8,8 +8,7 @@
 # ============================================================
 
 telegram:
-  api_id: 12345678
-  # api_hash лучше хранить в .env, а не здесь
+  # api_id / api_hash: built-in defaults, override only if needed
   phone: "+49123456789"
   session_path: "./sessions/tgassistant"
 

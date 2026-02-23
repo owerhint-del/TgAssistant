@@ -24,9 +24,9 @@ except ImportError:
 @dataclass
 class Config:
     # ─── Telegram ────────────────────────────────────────────
-    # Get your own credentials at https://my.telegram.org
-    tg_api_id: int = 0
-    tg_api_hash: str = ""
+    # Built-in defaults (standard Telethon). Override via ENV if needed.
+    tg_api_id: int = 2040
+    tg_api_hash: str = "b18441a1ff607e10a989891a5462e627"
     tg_phone: str = ""
     tg_session_path: str = "./sessions/tgassistant"
 
@@ -176,14 +176,6 @@ def validate_config(cfg: Config, require_tg: bool = True) -> list:
     errors = []
 
     if require_tg:
-        if not cfg.tg_api_id:
-            errors.append(
-                "TG_API_ID not set. Get yours at https://my.telegram.org"
-            )
-        if not cfg.tg_api_hash:
-            errors.append(
-                "TG_API_HASH not set. Get yours at https://my.telegram.org"
-            )
         if not cfg.tg_phone:
             errors.append(
                 "TG_PHONE not set. Example: TG_PHONE=+49123456789"

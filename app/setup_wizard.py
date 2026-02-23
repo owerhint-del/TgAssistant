@@ -102,7 +102,7 @@ def run_setup():
     print("Отвечай на вопросы и нажимай Enter.")
     print("Для пропуска шага нажми Enter (если значение уже задано).\n")
 
-    TOTAL_STEPS = 6
+    TOTAL_STEPS = 5
 
     # ── Шаг 1: Проверка зависимостей ─────────────────────────
     _print_step(1, TOTAL_STEPS, "Проверка зависимостей")
@@ -133,40 +133,10 @@ def run_setup():
         """)
         sys.exit(1)
 
-    # ── Шаг 2: Telegram API credentials ─────────────────────────
-    _print_step(2, TOTAL_STEPS, "Telegram API credentials")
-
-    print("""
-  You need Telegram API credentials to connect.
-  Get them at: https://my.telegram.org → API development tools
-
-  1. Log in with your phone number
-  2. Go to "API development tools"
-  3. Create a new application (any name)
-  4. Copy api_id and api_hash
-""")
+    # ── Шаг 2: Номер телефона ─────────────────────────────────
+    _print_step(2, TOTAL_STEPS, "Номер телефона Telegram")
 
     env_data = {}
-
-    current_api_id = os.getenv("TG_API_ID", "")
-    api_id_input = input(
-        f"  TG_API_ID [{current_api_id or 'from my.telegram.org'}]: "
-    ).strip()
-    api_id = api_id_input or current_api_id
-    if not api_id:
-        print("  ✗ TG_API_ID is required.")
-        sys.exit(1)
-    env_data["TG_API_ID"] = api_id
-
-    current_api_hash = os.getenv("TG_API_HASH", "")
-    api_hash_input = input(
-        f"  TG_API_HASH [{('***' + current_api_hash[-4:]) if current_api_hash else 'from my.telegram.org'}]: "
-    ).strip()
-    api_hash = api_hash_input or current_api_hash
-    if not api_hash:
-        print("  ✗ TG_API_HASH is required.")
-        sys.exit(1)
-    env_data["TG_API_HASH"] = api_hash
 
     current_env_phone = os.getenv("TG_PHONE", "")
     phone_input = input(
@@ -199,7 +169,7 @@ def run_setup():
     else:
         print("  → Пропущено (не нужен для транскрипции).")
 
-    # ── Шаг 4: Папка для PDF ──────────────────────────────────
+    # ── Шаг 4: Папка для PDF и шрифты ─────────────────────────
     _print_step(4, TOTAL_STEPS, "Папка для сохранения PDF")
 
     default_output = os.getenv(
@@ -212,9 +182,7 @@ def run_setup():
     env_data["OUTPUT_DIR"] = output_dir
     print(f"  ✓ PDF будут сохраняться в: {output_dir}")
 
-    # ── Шаг 5: Шрифты ─────────────────────────────────────────
-    _print_step(5, TOTAL_STEPS, "Скачивание шрифтов для PDF")
-
+    # Шрифты
     fonts_dir = Path("./fonts")
     fonts_dir.mkdir(exist_ok=True)
 
@@ -231,8 +199,8 @@ def run_setup():
     else:
         _download_font(DEJAVU_BOLD_URL, str(bold_path))
 
-    # ── Шаг 6: Авторизация Telegram ───────────────────────────
-    _print_step(6, TOTAL_STEPS, "Авторизация в Telegram")
+    # ── Шаг 5: Авторизация Telegram ───────────────────────────
+    _print_step(5, TOTAL_STEPS, "Авторизация в Telegram")
 
     print(f"""
   Сейчас Telegram отправит код подтверждения на номер {phone}.
@@ -251,8 +219,6 @@ def run_setup():
         from app.auth.session_manager import interactive_login
 
         cfg = load_config()
-        cfg.tg_api_id = int(api_id)
-        cfg.tg_api_hash = api_hash
         cfg.tg_phone = phone
 
         from app.utils.async_utils import run_sync, close_loop

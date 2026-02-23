@@ -18,8 +18,6 @@ from app.pipeline.classifier import MessageType, classify, _is_audio_video_media
 def cfg(tmp_path):
     from app.config import Config
     return Config(
-        tg_api_id=12345678,
-        tg_api_hash="testhash",
         tg_phone="+49000000000",
         tg_session_path=str(tmp_path / "session"),
         output_dir=str(tmp_path / "output"),

@@ -146,8 +146,7 @@ def cmd_check_config(args):
     checks = []
 
     # Telegram
-    checks.append(("TG_API_ID",     bool(cfg.tg_api_id),       str(cfg.tg_api_id) if cfg.tg_api_id else "не задан"))
-    checks.append(("TG_API_HASH",   bool(cfg.tg_api_hash),     "***" if cfg.tg_api_hash else "не задан"))
+    checks.append(("TG credentials", True, "built-in (override via ENV)"))
     checks.append(("TG_PHONE",      bool(cfg.tg_phone),         cfg.tg_phone or "не задан"))
 
     session_file = Path(cfg.tg_session_path + ".session")

@@ -24,8 +24,7 @@ TgAssistant downloads media through your personal Telegram account, transcribes 
 - **Python 3.11+** -- check with `python3 --version`
 - **ffmpeg** -- required for audio extraction
 - **Telegram account** -- you must be a member of the channel you want to transcribe
-- **Telegram API credentials** -- obtained from [my.telegram.org](https://my.telegram.org) (see [Configuration](#configuration))
-- **Anthropic API key** -- obtained from [console.anthropic.com](https://console.anthropic.com/keys)
+- **Anthropic API key** (optional) -- for AI summaries, from [console.anthropic.com](https://console.anthropic.com/keys)
 
 ### Installing ffmpeg
 
@@ -66,24 +65,7 @@ pip install -r requirements.txt
 
 TgAssistant uses a setup wizard that walks you through all required settings.
 
-### Step 1 -- Get Telegram API Credentials
-
-You need your own Telegram API credentials. They are **not** included with the project.
-
-1. Go to [https://my.telegram.org](https://my.telegram.org) and sign in with your phone number
-2. Navigate to **"API development tools"**
-3. Create a new application (the name and description can be anything)
-4. Note down your **API ID** (a number) and **API Hash** (a hex string)
-
-These credentials identify your application to Telegram. Keep them private.
-
-### Step 2 -- Get an Anthropic API Key
-
-1. Go to [https://console.anthropic.com/keys](https://console.anthropic.com/keys)
-2. Click **"Create key"**
-3. Copy the key (it starts with `sk-ant-`)
-
-### Step 3 -- Run the Setup Wizard
+### Quick Start
 
 ```bash
 source .venv/bin/activate
@@ -91,12 +73,13 @@ python run.py --setup
 ```
 
 The wizard will prompt you for:
-- Telegram API ID and API Hash
-- Phone number linked to your Telegram account
-- Anthropic API key
-- Output directory for PDF files
+- **Phone number** linked to your Telegram account
+- **Anthropic API key** (optional -- only needed for AI summaries)
+- **Output directory** for PDF files
 
 After entering your phone number, Telegram will send a verification code -- enter it in the terminal. This is a one-time step; the session is saved locally for future use.
+
+> **Advanced users:** You can override the built-in Telegram API credentials by setting `TG_API_ID` and `TG_API_HASH` environment variables.
 
 ### Optional: YAML Configuration
 
@@ -285,12 +268,6 @@ Install ffmpeg using your system's package manager (see [Requirements](#requirem
 ### "No access to channel"
 
 Your Telegram account must be a member of the channel. Verify you can access the content in the Telegram app before trying to process it.
-
-### "Invalid or expired Telegram API credentials"
-
-1. Go to [my.telegram.org](https://my.telegram.org) and verify your API ID and Hash
-2. Update the values in your `.env` file
-3. Run `python run.py --setup` to re-authenticate
 
 ### Other errors
 
