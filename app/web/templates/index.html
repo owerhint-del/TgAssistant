@@ -8,12 +8,12 @@
 
     <!-- Submit form -->
     <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-        <h2 class="text-base font-semibold mb-3">Process Telegram Link</h2>
+        <h2 class="text-base font-semibold mb-3">Process Link</h2>
         <form @submit.prevent="submitLink()" class="flex flex-col sm:flex-row gap-3">
             <input
                 type="url"
                 x-model="newUrl"
-                placeholder="https://t.me/c/1234567890/123 or https://t.me/channel/123"
+                placeholder="Telegram, YouTube, X, VK, Rutube — any video link"
                 required
                 class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm
                        focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none
@@ -51,7 +51,7 @@
 
         <!-- Empty state -->
         <div x-show="jobs.length === 0 && !loading" class="px-5 py-12 text-center text-gray-400 text-sm">
-            No jobs yet. Paste a Telegram link above to get started.
+            No jobs yet. Paste a link above to get started.
         </div>
 
         <!-- Loading -->
@@ -83,6 +83,12 @@
                                     </span>
                                     <span x-text="statusLabel(job.status)"></span>
                                 </span>
+
+                                <!-- Source tag for external -->
+                                <span x-show="isExternalUrl(job.url)"
+                                      class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                      :class="externalBadgeClass(job.url)"
+                                      x-text="externalSourceLabel(job.url)"></span>
 
                                 <!-- Date -->
                                 <span class="text-xs text-gray-400" x-text="formatDate(job.created_at)"></span>
@@ -128,6 +134,36 @@
                                                   d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
                                         </svg>
                                         wiki
+                                    </span>
+                                </div>
+                            </template>
+
+                            <!-- Collected folder badge (for done collect jobs) -->
+                            <template x-if="job.status === 'done' && job.exports && job.exports.some(e => e.export_type === 'collected') && !isExternalUrl(job.url)">
+                                <div class="flex gap-1.5">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium
+                                                 bg-violet-50 text-violet-700 rounded-md"
+                                          :title="job.exports.find(e => e.export_type === 'collected')?.file_path">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                                        </svg>
+                                        collected
+                                    </span>
+                                </div>
+                            </template>
+
+                            <!-- External source badge (for done external jobs) -->
+                            <template x-if="job.status === 'done' && job.exports && job.exports.some(e => e.export_type === 'collected') && isExternalUrl(job.url)">
+                                <div class="flex gap-1.5">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md"
+                                          :class="externalBadgeClass(job.url)"
+                                          :title="job.exports.find(e => e.export_type === 'collected')?.file_path">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                        </svg>
+                                        <span x-text="externalSourceLabel(job.url)"></span>
                                     </span>
                                 </div>
                             </template>
@@ -265,6 +301,8 @@ function jobsApp() {
                 'transcribing':  'bg-indigo-100 text-indigo-700',
                 'exporting':     'bg-cyan-100 text-cyan-700',
                 'collecting':    'bg-emerald-100 text-emerald-700',
+                'analyzing':     'bg-amber-100 text-amber-700',
+                'saving':        'bg-teal-100 text-teal-700',
                 'done':          'bg-green-100 text-green-700',
                 'error':         'bg-red-100 text-red-700',
                 'cancelled':     'bg-gray-100 text-gray-500',
@@ -278,6 +316,8 @@ function jobsApp() {
                 'transcribing': 'bg-indigo-500',
                 'exporting':    'bg-cyan-500',
                 'collecting':   'bg-emerald-500',
+                'analyzing':    'bg-amber-500',
+                'saving':       'bg-teal-500',
             };
             return map[status] || 'bg-gray-500';
         },
@@ -289,6 +329,8 @@ function jobsApp() {
                 'transcribing': 'Transcribing',
                 'exporting':    'Exporting',
                 'collecting':   'Collecting',
+                'analyzing':    'Analyzing',
+                'saving':       'Saving',
                 'done':         'Done',
                 'error':        'Error',
                 'cancelled':    'Cancelled',
@@ -297,7 +339,33 @@ function jobsApp() {
         },
 
         isActive(status) {
-            return ['downloading', 'transcribing', 'exporting', 'collecting'].includes(status);
+            return ['downloading', 'transcribing', 'exporting', 'collecting', 'analyzing', 'saving'].includes(status);
+        },
+
+        isExternalUrl(url) {
+            if (!url) return false;
+            return !url.includes('t.me/');
+        },
+
+        externalSourceLabel(url) {
+            if (!url) return 'external';
+            if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
+            if (url.includes('x.com') || url.includes('twitter.com')) return 'x';
+            if (url.includes('vk.com') || url.includes('vk.ru')) return 'vk';
+            if (url.includes('rutube.ru')) return 'rutube';
+            return 'external';
+        },
+
+        externalBadgeClass(url) {
+            const source = this.externalSourceLabel(url);
+            const map = {
+                'youtube': 'bg-red-50 text-red-700',
+                'x':       'bg-gray-100 text-gray-800',
+                'vk':      'bg-blue-50 text-blue-700',
+                'rutube':  'bg-orange-50 text-orange-700',
+                'external':'bg-violet-50 text-violet-700',
+            };
+            return map[source] || map['external'];
         },
 
         formatDate(dateStr) {

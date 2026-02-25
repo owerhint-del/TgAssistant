@@ -62,9 +62,17 @@ class Config:
     pdf_page_size: str = "A4"
     pdf_split_mode: str = "two_pdfs"   # two_pdfs | single_pdf
 
+    # ─── yt-dlp ──────────────────────────────────────────────
+    ytdlp_cookies_file: str = ""           # path to cookies.txt (Netscape format)
+    ytdlp_format: str = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b"  # prefer mp4
+
     # ─── Cleanup ─────────────────────────────────────────────
     cleanup_temp: bool = True
     orphan_retention_hours: int = 24
+
+    # ─── Bot ────────────────────────────────────────────────
+    bot_token: str = ""                                    # TG_BOT_TOKEN
+    bot_admin_ids: list = field(default_factory=list)      # TG_BOT_ADMIN_IDS (comma-separated)
 
     # ─── Paths ───────────────────────────────────────────────
     db_path: str = "./data/tasks.db"
@@ -150,6 +158,18 @@ def load_config(
     cfg.pdf_font_path  = get("PDF_FONT_PATH",   y("pdf", "font_path"),  cfg.pdf_font_path)
     cfg.pdf_page_size  = get("PDF_PAGE_SIZE",   y("pdf", "page_size"),  cfg.pdf_page_size)
     cfg.pdf_split_mode = get("PDF_SPLIT_MODE",  y("pdf", "split_mode"), cfg.pdf_split_mode)
+
+    cfg.ytdlp_cookies_file = get("YTDLP_COOKIES_FILE", y("ytdlp", "cookies_file"), cfg.ytdlp_cookies_file)
+    cfg.ytdlp_format       = get("YTDLP_FORMAT",       y("ytdlp", "format"),        cfg.ytdlp_format)
+
+    cfg.bot_token = get("TG_BOT_TOKEN", y("bot", "token"), cfg.bot_token)
+    _admin_ids_raw = get("TG_BOT_ADMIN_IDS", y("bot", "admin_ids"), "")
+    if isinstance(_admin_ids_raw, list):
+        cfg.bot_admin_ids = [int(x) for x in _admin_ids_raw if x]
+    elif isinstance(_admin_ids_raw, str) and _admin_ids_raw.strip():
+        cfg.bot_admin_ids = [int(x.strip()) for x in _admin_ids_raw.split(",") if x.strip()]
+    else:
+        cfg.bot_admin_ids = []
 
     _ct = get("CLEANUP_TEMP", y("cleanup", "cleanup_temp"), cfg.cleanup_temp)
     cfg.cleanup_temp         = _ct not in (False, "false", "False", "0", 0)

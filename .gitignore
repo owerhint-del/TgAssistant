@@ -49,3 +49,6 @@ package-lock.json
 # Personal/planning
 notes.md
 docs/plans/
+
+# Temporary test files
+tmp_*

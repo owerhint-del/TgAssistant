@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 from app.db.models import SCHEMA
-from app.utils.url_parser import TelegramLink
+from app.utils.url_parser import TelegramLink, ExternalLink
 
 
 def _new_id() -> str:
@@ -24,9 +24,10 @@ def _new_id() -> str:
 
 
 class Database:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, output_dir: Optional[str] = None):
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
+        self.output_dir = output_dir
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = threading.Lock()
 
@@ -91,13 +92,24 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
-    def create_job(self, link: TelegramLink, job_type: str = "media") -> str:
+    def create_job(self, link: TelegramLink, job_type: str = "collect") -> str:
         job_id = _new_id()
         with self._write() as c:
             c.execute(
                 """INSERT INTO jobs (id, url, chat_id, msg_id, status, job_type, started_at)
                    VALUES (?, ?, ?, ?, 'pending', ?, datetime('now'))""",
                 (job_id, link.raw_url, link.chat_id, link.msg_id, job_type),
+            )
+        return job_id
+
+    def create_external_job(self, link: ExternalLink, job_type: str = "external") -> str:
+        """Создаёт задачу для внешнего видео (YouTube, X и т.д.). chat_id=0, msg_id=0."""
+        job_id = _new_id()
+        with self._write() as c:
+            c.execute(
+                """INSERT INTO jobs (id, url, chat_id, msg_id, status, job_type, started_at)
+                   VALUES (?, ?, 0, 0, 'pending', ?, datetime('now'))""",
+                (job_id, link.raw_url, job_type),
             )
         return job_id
 
@@ -250,6 +262,26 @@ class Database:
 
     # ─── exports ───────────────────────────────────────────────
 
+    def _to_relative(self, abs_path: str) -> str:
+        """Преобразует абсолютный путь в относительный (от output_dir)."""
+        if not self.output_dir:
+            return abs_path
+        out = str(Path(self.output_dir).resolve())
+        resolved = str(Path(abs_path).resolve())
+        if resolved.startswith(out + "/"):
+            return resolved[len(out) + 1:]  # strip prefix + /
+        return abs_path  # не под output_dir — сохраняем как есть
+
+    def _resolve_path(self, stored_path: str) -> str:
+        """Резолвит путь из БД: абсолютный → as-is, относительный → output_dir + path."""
+        if not stored_path:
+            return stored_path
+        if Path(stored_path).is_absolute():
+            return stored_path
+        if self.output_dir:
+            return str(Path(self.output_dir) / stored_path)
+        return stored_path
+
     def save_export(
         self,
         job_id: str,
@@ -259,11 +291,12 @@ class Database:
         page_count: Optional[int] = None,
     ) -> str:
         eid = _new_id()
+        store_path = self._to_relative(file_path)
         with self._write() as c:
             c.execute(
                 """INSERT INTO exports (id, job_id, export_type, file_path, file_size_bytes, page_count)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (eid, job_id, export_type, file_path, file_size_bytes, page_count),
+                (eid, job_id, export_type, store_path, file_size_bytes, page_count),
             )
         return eid
 
@@ -272,7 +305,23 @@ class Database:
             rows = c.execute(
                 "SELECT * FROM exports WHERE job_id = ? ORDER BY created_at", (job_id,)
             ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["file_path"] = self._resolve_path(d["file_path"])
+            result.append(d)
+        return result
+
+    def get_export_by_id(self, export_id: str) -> Optional[Dict[str, Any]]:
+        with self._read() as c:
+            row = c.execute(
+                "SELECT * FROM exports WHERE id = ?", (export_id,)
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["file_path"] = self._resolve_path(d["file_path"])
+        return d
 
     # ─── errors ────────────────────────────────────────────────
 

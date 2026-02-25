@@ -16,9 +16,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     msg_id          INTEGER NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending',
     -- pending | authenticating | downloading | transcribing
-    -- exporting | collecting | done | error | cancelled
+    -- exporting | collecting | analyzing | saving | done | error | cancelled
     job_type        TEXT NOT NULL DEFAULT 'media',
-    -- media | ingest
+    -- media | ingest | collect | external
     retry_count     INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS summaries (
 CREATE TABLE IF NOT EXISTS exports (
     id              TEXT PRIMARY KEY,
     job_id          TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-    export_type     TEXT NOT NULL,   -- 'transcript' | 'summary'
+    export_type     TEXT NOT NULL,   -- 'transcript' | 'summary' | 'ingest_wiki' | 'collected'
     file_path       TEXT NOT NULL,
     file_size_bytes INTEGER,
     page_count      INTEGER,

@@ -22,15 +22,10 @@ async def download_export(export_id: str, request: Request):
     """Download a PDF export file."""
     db = request.app.state.db
 
-    # Find the export by ID
-    row = db.conn.execute(
-        "SELECT * FROM exports WHERE id = ?", (export_id,)
-    ).fetchone()
-
-    if not row:
+    export = db.get_export_by_id(export_id)
+    if not export:
         return JSONResponse({"error": "Export not found"}, status_code=404)
 
-    export = dict(row)
     file_path = Path(export["file_path"])
 
     if not file_path.exists():

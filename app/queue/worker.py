@@ -12,9 +12,11 @@ from app.config import Config
 from app.db.database import Database
 from app.pipeline.orchestrator import Orchestrator, PipelineError
 from app.pipeline.ingest_orchestrator import IngestOrchestrator, IngestError
+from app.pipeline.collector import CollectorOrchestrator, CollectorError
+from app.pipeline.external_collector import ExternalCollectorOrchestrator, ExternalCollectorError
 from app.pipeline.classifier import classify, MessageType
 from app.pipeline.downloader import DownloadError, AccessDeniedError, MediaNotFoundError, UnsupportedMediaError, MediaLimitExceededError
-from app.utils.url_parser import TelegramLink
+from app.utils.url_parser import TelegramLink, ExternalLink, ParsedLink
 
 logger = logging.getLogger("tgassistant.worker")
 
@@ -34,6 +36,8 @@ class Worker:
         self._progress_cb = progress_cb
         self.orchestrator = Orchestrator(cfg, db, progress_cb=progress_cb)
         self.ingest_orchestrator = IngestOrchestrator(cfg, db, progress_cb=progress_cb)
+        self.collector = CollectorOrchestrator(cfg, db, progress_cb=progress_cb)
+        self.external_collector = ExternalCollectorOrchestrator(cfg, db, progress_cb=progress_cb)
 
     def _determine_job_type(self, job_id: str, link: TelegramLink, client: TelegramClient) -> str:
         """
@@ -42,6 +46,10 @@ class Worker:
         """
         job = self.db.get_job_by_id(job_id)
         existing_type = job.get("job_type") if job else None
+
+        # "collect" и "external" — не переклассифицируем
+        if existing_type in ("collect", "external"):
+            return existing_type
 
         # Если тип уже определён и это не дефолтный 'media' (resume)
         if existing_type and existing_type != "media":
@@ -66,13 +74,16 @@ class Worker:
     def process(
         self,
         job_id: str,
-        link: TelegramLink,
-        client: TelegramClient,
+        link: ParsedLink,
+        client: Optional[TelegramClient] = None,
         from_start: bool = False,
     ) -> Optional[dict]:
         """
         Обрабатывает задачу с retry при временных ошибках.
-        Маршрутизирует к Orchestrator (media) или IngestOrchestrator (ingest).
+        Маршрутизирует к нужному оркестратору по типу ссылки.
+
+        Args:
+            client: TelegramClient (None для external jobs)
 
         Returns:
             dict с результатами или None при неустранимой ошибке.
@@ -87,10 +98,26 @@ class Worker:
                     job_id, attempt, max_attempts,
                 )
 
-                # Определяем тип задачи (media или ingest)
+                # External links — отдельный путь, Telegram client не нужен
+                if isinstance(link, ExternalLink):
+                    result = self.external_collector.run(
+                        job_id=job_id,
+                        link=link,
+                        from_start=from_start,
+                    )
+                    return result
+
+                # Telegram links — определяем тип задачи (media, ingest, collect)
                 job_type = self._determine_job_type(job_id, link, client)
 
-                if job_type == "ingest":
+                if job_type == "collect":
+                    result = self.collector.run(
+                        job_id=job_id,
+                        link=link,
+                        client=client,
+                        from_start=from_start,
+                    )
+                elif job_type == "ingest":
                     result = self.ingest_orchestrator.run(
                         job_id=job_id,
                         link=link,
@@ -120,7 +147,7 @@ class Worker:
                 )
                 return None
 
-            except (PipelineError, IngestError) as e:
+            except (PipelineError, IngestError, CollectorError, ExternalCollectorError) as e:
                 error_msg = str(e)
                 self.db.increment_retry(job_id)
                 self.db.log_error(

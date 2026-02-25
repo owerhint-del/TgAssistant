@@ -175,7 +175,7 @@ class TestDatabaseJobType:
     def test_create_job_default_type(self, db, private_link):
         job_id = db.create_job(private_link)
         job = db.get_job_by_id(job_id)
-        assert job["job_type"] == "media"
+        assert job["job_type"] == "collect"
 
     def test_create_job_ingest_type(self, db, private_link):
         job_id = db.create_job(private_link, job_type="ingest")

@@ -9,7 +9,7 @@ from typing import Optional, Callable
 
 from app.config import Config
 from app.db.database import Database
-from app.utils.url_parser import parse_url, TelegramLink
+from app.utils.url_parser import parse_url, TelegramLink, ExternalLink, ParsedLink
 from app.utils.async_utils import safe_disconnect
 from app.auth.session_manager import make_client
 from app.queue.worker import Worker
@@ -44,6 +44,7 @@ class JobService:
         """
         # Parse and validate
         link = parse_url(url)
+        is_external = isinstance(link, ExternalLink)
 
         # Idempotency check
         existing = self.db.get_job_by_url(url)
@@ -51,7 +52,7 @@ class JobService:
             status = existing["status"]
             if status == "done":
                 return {"job_id": existing["id"], "status": "done", "message": "Already processed"}
-            elif status in ("downloading", "transcribing", "exporting", "collecting"):
+            elif status in ("downloading", "transcribing", "exporting", "collecting", "analyzing", "saving"):
                 return {"job_id": existing["id"], "status": status, "message": "Already in progress"}
             elif status == "error":
                 # Auto-retry on resubmit
@@ -69,7 +70,10 @@ class JobService:
             job_id = existing["id"]
             self.db.update_job_status(job_id, "pending")
         else:
-            job_id = self.db.create_job(link)
+            if is_external:
+                job_id = self.db.create_external_job(link)
+            else:
+                job_id = self.db.create_job(link)
 
         # Run pipeline in background thread
         loop = asyncio.get_running_loop()
@@ -97,7 +101,7 @@ class JobService:
         _notify(job_id, "pending")
         return {"job_id": job_id, "status": "pending", "message": "Retry started"}
 
-    def _run_pipeline(self, job_id: str, link: TelegramLink, from_start: bool):
+    def _run_pipeline(self, job_id: str, link: ParsedLink, from_start: bool):
         """
         Execute the pipeline synchronously in a thread pool.
         Uses per-thread event loop via async_utils (thread-local, no global race).
@@ -106,29 +110,33 @@ class JobService:
         from app.utils.async_utils import run_sync, close_loop
 
         terminal_sent = False
+        is_external = isinstance(link, ExternalLink)
 
         try:
-            client = make_client(self.cfg)
-            run_sync(client.connect())
-
-            # Check auth
-            if not run_sync(client.is_user_authorized()):
-                self.db.update_job_status(job_id, "error", last_error="Telegram not authorized")
-                _notify(job_id, "error", error="Telegram not authorized")
-                terminal_sent = True
-                safe_disconnect(client)
-                return
-
             worker = Worker(self.cfg, self.db, progress_cb=_notify)
-            pdf_paths = worker.process(job_id, link, client, from_start=from_start)
 
-            safe_disconnect(client)
+            if is_external:
+                # External links: no Telegram client needed
+                result = worker.process(job_id, link, client=None, from_start=from_start)
+            else:
+                # Telegram links: need auth
+                client = make_client(self.cfg)
+                run_sync(client.connect())
 
-            if pdf_paths:
+                if not run_sync(client.is_user_authorized()):
+                    self.db.update_job_status(job_id, "error", last_error="Telegram not authorized")
+                    _notify(job_id, "error", error="Telegram not authorized")
+                    terminal_sent = True
+                    safe_disconnect(client)
+                    return
+
+                result = worker.process(job_id, link, client, from_start=from_start)
+                safe_disconnect(client)
+
+            if result:
                 _notify(job_id, "done")
                 terminal_sent = True
             else:
-                # Worker returned None — job is in error state in DB
                 job = self.db.get_job_by_id(job_id)
                 error_msg = (job or {}).get("last_error", "Unknown error")
                 _notify(job_id, "error", error=error_msg)
@@ -140,7 +148,6 @@ class JobService:
             _notify(job_id, "error", error=str(e))
             terminal_sent = True
         finally:
-            # Safety net: if somehow no terminal event was sent, send one now
             if not terminal_sent:
                 _notify(job_id, "error", error="Pipeline finished without terminal status")
             close_loop()
